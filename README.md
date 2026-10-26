@@ -1,4 +1,4 @@
-# GIBD: SV-aware identity-by-descent in pangenome graphs
+# GIBD: Structural Variant aware identity-by-descent (IBD) detection in pangenome graphs
 
 GIBD finds identity-by-descent (IBD) segments between pairs of haplotypes in a
 pangenome graph. It labels each segment with the structural variants (SVs) that
