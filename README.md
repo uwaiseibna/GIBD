@@ -160,7 +160,3 @@ when a reference genome is given.
 inverted repeats and cycles, and runs in `test_out/`. It checks the gMEMs against a
 brute-force enumeration of all occurrence pairs (`tests/expected/`), the SV labels
 against the planted variants, and the rules for joining gMEMs into segments.
-
-## License
-
-To be added.
