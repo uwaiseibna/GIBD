@@ -30,7 +30,7 @@ orientations) and z is the number of matching pairs of occurrences.
 If you use GIBD, please cite:
 
 > Uwaise Islam, Franco Marsico, Erik Garrison, Christina Boucher.
-> *GIBD: Pairwise-Maximal Matching on Pangenome Graphs for IBD Detection.*
+> *Structural Variant Aware Identity-by-Descent Detection on Pangenome Graph.*
 > 2026. (Preprint link to be added.)
 
 ```bibtex
