@@ -35,7 +35,7 @@ If you use GIBD, please cite:
 
 ```bibtex
 @article{islam2026gibd,
-  title   = {{GIBD}: Pairwise-Maximal Matching on Pangenome Graphs for {IBD} Detection},
+  title   = {Structural Variant Aware Identity-by-Descent Detection on Pangenome Graph.},
   author  = {Islam, Uwaise and Marsico, Franco and Garrison, Erik and Boucher, Christina},
   year    = {2026},
   note    = {Preprint}
