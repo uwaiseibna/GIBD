@@ -33,15 +33,6 @@ If you use GIBD, please cite:
 > *Structural Variant Aware Identity-by-Descent Detection on Pangenome Graph.*
 > 2026. (Preprint link to be added.)
 
-```bibtex
-@article{islam2026gibd,
-  title   = {Structural Variant Aware Identity-by-Descent Detection on Pangenome Graph.},
-  author  = {Islam, Uwaise and Marsico, Franco and Garrison, Erik and Boucher, Christina},
-  year    = {2026},
-  note    = {Preprint}
-}
-```
-
 ## Installation
 
 GIBD is written in C++17 and depends on [GBWT](https://github.com/jltsiren/gbwt)
