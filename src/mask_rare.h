@@ -13,7 +13,7 @@
  * nearby, e.g. the breakpoints of a private inversion) is left as it is.
  */
 #pragma once
-#include "sweep_common.h"
+#include "common.h"
 #include <functional>
 
 // One rewritten stretch: masked walk [m_lo, m_lo + m_len) stands for original

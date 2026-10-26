@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Orientation-aware IBS runs (merge mode). Thirty 2 kb reference nodes on a 1 cM/kb map; nodes 14-16
+# Orientation-aware IBS runs (IBD segments). Thirty 2 kb reference nodes on a 1 cM/kb map; nodes 14-16
 # (bp 26000-32000) are an inversion carried by inv_a and inv_b (one locus). Nodes 31, 32 are alternative
 # alleles of nodes 12 and 18 (a discordance of 2 kb, more than max-gap 1000 bp).
 #   ref, fwd_a  1..30 forward

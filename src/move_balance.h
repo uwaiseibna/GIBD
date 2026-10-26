@@ -31,7 +31,6 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -190,59 +189,4 @@ struct MoveBalancerT {
         }
     }
     void clear() { for (int s = 0; s < 2; ++s) L[s] = List{}; r = 0; }
-
-    // Convenience for tests: P[0..r] input starts (P[r] = N), out[j] output
-    // starts, qorder intervals by output start. On return P / out hold the
-    // balanced intervals and orig[i] the original interval of each.
-    void run(std::vector<Pos>& P, std::vector<Pos>& out, const std::vector<uint32_t>& qorder,
-             std::vector<uint32_t>& orig, uint32_t a) {
-        const size_t n = out.size();
-        if (n + 1 != P.size() || qorder.size() != n) throw std::runtime_error("MoveBalancer: bad input sizes");
-        reserve(n, n / 4);
-        for (size_t j = 0; j < n; ++j) addInput(P[j]);
-        for (size_t k = 0; k < n; ++k) addOutput(out[qorder[k]], qorder[k]);
-        const Pos total = P[n];
-        balance(total, a);
-        std::vector<Pos> P2, out2; orig.clear();
-        forEach([&](Pos i, Pos o, uint32_t j) { P2.push_back(i); out2.push_back(o); orig.push_back(j); });
-        P2.push_back(total);
-        clear();
-        P.swap(P2); out.swap(out2);
-    }
-
-    // Brute-force check: the intervals refine the original ones with the same
-    // map, and both directions are alpha-balanced. O(r log r); tests only.
-    static bool check(const std::vector<Pos>& P0, const std::vector<Pos>& out0,
-                      const std::vector<Pos>& P, const std::vector<Pos>& out,
-                      const std::vector<uint32_t>& orig, uint32_t alpha, std::string& why) {
-        const size_t n = out.size();
-        for (size_t i = 0; i < n; ++i) {
-            const uint32_t j = orig[i];
-            if (P[i] < P0[j] || P[i + 1] > P0[j + 1]) { why = "piece outside its original interval"; return false; }
-            if (out[i] != out0[j] + (P[i] - P0[j])) { why = "piece maps differently"; return false; }
-        }
-        std::vector<std::pair<Pos, Pos>> q(n);           // (output start, length)
-        for (size_t i = 0; i < n; ++i) q[i] = {out[i], P[i + 1] - P[i]};
-        std::sort(q.begin(), q.end());
-        for (size_t i = 0; i + 1 < n; ++i)
-            if (q[i].first + q[i].second != q[i + 1].first) { why = "outputs do not tile"; return false; }
-        auto heavy = [&](const std::vector<Pos>& A, const std::vector<Pos>& Bnd) {
-            size_t k = 0;
-            for (size_t i = 0; i + 1 < A.size(); ++i) {
-                while (k < Bnd.size() && Bnd[k] <= A[i]) ++k;
-                size_t c = 0, kk = k;
-                while (kk < Bnd.size() && Bnd[kk] < A[i + 1]) { ++c; ++kk; }
-                if (c >= 2 * alpha) return true;
-            }
-            return false;
-        };
-        std::vector<Pos> Q(n + 1);
-        for (size_t i = 0; i < n; ++i) Q[i] = q[i].first;
-        Q[n] = P[n];
-        std::vector<Pos> Pb(P.begin(), P.end() - 1), Qb(Q.begin(), Q.end() - 1);
-        if (heavy(Q, Pb)) { why = "an output interval is heavy"; return false; }
-        if (heavy(P, Qb)) { why = "an input interval is heavy"; return false; }
-        return true;
-    }
 };
-using MoveBalancer = MoveBalancerT<uint64_t>;

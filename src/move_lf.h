@@ -36,53 +36,8 @@
 #include <stdexcept>
 #include <vector>
 
-// Optional fast-forward counters (-DMOVE_FF_STATS; compiled out otherwise).
-// A move query reads one row and then steps forward from that row's dest_run
-// to the row holding the target. The steps are the fast-forward term F of the
-// time bound, which balancing would cap at a constant per query. Counted per
-// call site; the build must run with OMP_NUM_THREADS=1 (plain counters).
-#ifdef MOVE_FF_STATS
-#include <cstdio>
-namespace moveff {
-enum Site { FL_WALK, EXT, CONDUIT, PHI_NEXT, PHI_HEAD, EXT_END, CHAIN_END, NSITES };
-struct Stats {
-    static constexpr int NB = 34;   // bucket 0 = 0 steps, b = [2^(b-1), 2^b)
-    uint64_t calls[NSITES] = {}, steps[NSITES] = {}, max[NSITES] = {}, hist[NSITES][NB] = {};
-    ~Stats() {
-        static const char* name[NSITES] = {"fl_walk", "ext", "conduit", "phi_next", "phi_head", "ext_end", "chain_end"};
-        uint64_t tc = 0, ts = 0;
-        for (int s = 0; s < NSITES; ++s) {
-            tc += calls[s]; ts += steps[s];
-            std::fprintf(stderr, "[ff] %-8s calls=%llu steps=%llu steps/call=%.4f max=%llu hist:",
-                         name[s], (unsigned long long)calls[s], (unsigned long long)steps[s],
-                         calls[s] ? (double)steps[s] / calls[s] : 0.0, (unsigned long long)max[s]);
-            for (int b = 0; b < NB; ++b)
-                if (hist[s][b]) std::fprintf(stderr, " %s%llu:%llu", b ? "<" : "=",
-                                             b ? 1ULL << b : 0ULL, (unsigned long long)hist[s][b]);
-            std::fprintf(stderr, "\n");
-        }
-        std::fprintf(stderr, "[ff] total calls=%llu F=%llu F/calls=%.4f\n",
-                     (unsigned long long)tc, (unsigned long long)ts, tc ? (double)ts / tc : 0.0);
-    }
-};
-inline Stats& stats() { static Stats x; return x; }
-inline void rec(Site s, uint64_t n) {
-    Stats& x = stats();
-    x.calls[s]++; x.steps[s] += n; if (n > x.max[s]) x.max[s] = n;
-    x.hist[s][n ? 64 - __builtin_clzll(n) : 0]++;
-}
-}
-#define MOVE_FF(site, n) moveff::rec(moveff::site, (n))
-#else
-#define MOVE_FF(site, n) ((void)0)
-#endif
-
-#ifndef MOVE_RANGE_B
-#define MOVE_RANGE_B 32
-#endif
-
 struct MoveLF {
-    static constexpr uint32_t B    = MOVE_RANGE_B;   // range-sample spacing in runs
+    static constexpr uint32_t B    = 32;             // range-sample spacing in runs
     static constexpr uint32_t ALPHA = 8;             // balancing: < 2 * ALPHA steps per seek
     static constexpr uint32_t NONE = std::numeric_limits<uint32_t>::max();
     struct Row {
@@ -107,7 +62,7 @@ struct MoveLF {
         return k;
     }
 
-    // alpha >= 2 balances the structure (MoveBalancer): every output interval
+    // alpha >= 2 balances the structure (MoveBalancerT, move_balance.h): every output interval
     // then holds fewer than 2 alpha run starts, so every seek takes fewer than
     // 2 alpha steps. Split pieces keep their run's successor and rank; `cont`
     // marks a piece that continues the previous row's run.

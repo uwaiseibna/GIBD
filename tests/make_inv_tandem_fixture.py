@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-# Inverted-tandem (both-orientation) multi-node cycle fixture — the AMY1 class.
+# Inverted-tandem (both-orientation) multi-node cycle fixture.
 # Same repeat unit A(2) B(3) C(4) as make_tandem_fixture.py, but the array is
 # carried in BOTH orientations across haplotypes: some haps traverse the unit
 # forward (2+ 3+ 4+, back-edge 4->2), some carry it INVERTED (4- 3- 2-, chained
 # 2- -> 4-). So node ids 2/3/4 appear as '+' in one stored thread and '-' in
-# another — exactly the "node traversed in both orientations" condition AMY1 has
-# (283 such ids). This is the class unrollCycles CANNOT resolve: monotone visit-
-# layer gives a DAG per orientation, but the bidirectional closure the sweep needs
-# re-forms a cycle (same (id,layer) key reached '+' by a fwd thread and '-' by an
-# inverted thread). Contrast make_tandem_fixture.py (all '+') which unrolls to
-# SCC 0. Expectation here: residual SCC > 0 for ANY --unroll-max -> mask+report.
+# another, as in inverted repeats of real graphs (e.g. the AMY1 locus). gibd must
+# report the inverted matches across the array (checked in `make test`).
 import random
 random.seed(7)
 def seq(n): return ''.join(random.choice('ACGT') for _ in range(n))

@@ -1,8 +1,8 @@
 /*
- * make_test_gbwt.cpp  —  build a small synthetic GBWT for the gibd tests
+ * make_test_gbwt  —  build the small synthetic GBWT of `make test`.
  *
- * Graph: 12 nodes, each 200 bp.  Node 12 carries a self-loop (tandem repeat).
- * 9 paths (one haplotype per sample):
+ * Graph: 15 nodes of 200 bp; node 12 has a self-loop (tandem repeat).
+ * 12 paths (one haplotype per sample):
  *   path0 (sample 0): 1,2,3,4,5,6,7,8
  *   path1 (sample 1): 1,2,3,4,5,9,7,8        (diverges at node 6 → takes 9)
  *   path2 (sample 2): 1,2,10,4,5,6,7,8       (diverges at node 3 → takes 10)
@@ -14,10 +14,11 @@
  *   path8 (sample 8): 1,2,3,4,5,6,12,12,12,7,8  (same as path7; equal-copy tandem)
  *   path9 (sample 9): 1,2,3,13,5,6,7,8          (node-4 substitution → 13: an "error")
  *   path10(sample10): 1,2,3,14,5,6,7,8          (node-4 substitution → 14: a different "error")
+ *   path11(sample11): 1,2,3,4,5,15,7,8          (node-6 substitution → 15)
  *
  * Error-gap pair (9,10): they share 1-2-3 (left, bp[0,600]) and 5-6-7-8 (right,
  * bp[800,1600]) but diverge at the node-4 position (13 vs 14, off-reference).
- * On the reference this is a 200 bp discordance. The merge (merge mode, --map)
+ * On the reference this is a 200 bp discordance. With --map, gibd
  * must report ONE segment bp[0,1600] when --max-gap-bp >= 200 and TWO segments
  * when --max-gap-bp = 0. Both flanks are >= min-bp 600, so this case is emitted
  * at the default floor (it validates the merge, not the lowered floor).
@@ -25,9 +26,9 @@
  * Sub-seed-flank pair (0,11): path11 substitutes node 6 -> 15, so it shares
  * 1-2-3-4-5 (left, bp[0,1000], 10 cM) and only 7-8 (right, bp[1200,1600],
  * 400 bp = 4 cM) with the reference, gapped 200 bp at node 6. The 400 bp right
- * flank is BELOW the raw min-bp 600 floor, so it is dropped in raw mode but
- * emitted in merge mode (floor lowered to min-extend-cM). It must bridge so
- * (0,11) reports ONE segment reaching bp 1600 — this validates Step 1.
+ * flank is BELOW the min-bp 600 floor, so it is dropped without --map but
+ * kept with --map (floor lowered to min-extend-cM). It must bridge so
+ * (0,11) reports ONE segment reaching bp 1600.
  *
  * At min_bp=600 (≥3 nodes × 200 bp), expected matches include:
  *   IBD (0,3): nodes 1-2-3-4-5-6-7-8         → 1600 bp
@@ -38,10 +39,6 @@
  * (--ref-path 0), so the (5,6) match is labeled insertion=1.
  *
  * Output: test.gbwt + test.gfa
- * Build:
- *   g++ -std=c++17 -O2 -I deps/gbwt/include -I $SDSL_PREFIX/include \
- *       -L deps/gbwt/lib -L $SDSL_PREFIX/lib \
- *       make_test_gbwt.cpp -o make_test_gbwt -lgbwt -lsdsl -lzstd
  */
 
 #include <gbwt/dynamic_gbwt.h>
@@ -69,7 +66,7 @@ int main()
         return static_cast<vt>(gbwt::Node::encode(id, true));
     };
 
-    // ---- Define paths ----
+    // Paths.
     std::vector<gbwt::vector_type> paths = {
         { enc(1),enc(2),enc(3),enc(4),enc(5),enc(6),enc(7),enc(8) },   // path0
         { enc(1),enc(2),enc(3),enc(4),enc(5),enc(9),enc(7),enc(8) },   // path1
@@ -87,7 +84,7 @@ int main()
         { enc(1),enc(2),enc(3),enc(4),enc(5),enc(15),enc(7),enc(8) },       // path11(node6→15)
     };
 
-    // ---- Build DynamicGBWT (bidirectional) ----
+    // Bidirectional DynamicGBWT.
     // For a bidirectional GBWT the text must interleave fwd and rev paths:
     //   fwd0 $ rev0 $ fwd1 $ rev1 $ ...
     // has_both_orientations=true signals the builder that this is already interleaved.
@@ -105,7 +102,7 @@ int main()
     gbwt::DynamicGBWT dynamic;
     dynamic.insert(text, /*has_both_orientations=*/true);
 
-    // ---- Attach metadata: 4 samples, each with 1 haplotype (1 path each) ----
+    // Metadata: one sample with one haplotype per path.
     // In a bidirectional GBWT each path contributes 2 sequences (fwd + rev),
     // but metadata path entries correspond to paths (not sequences).
     for (int i = 0; i < N_PATHS; ++i)
@@ -119,7 +116,7 @@ int main()
     dynamic.metadata.setContigs(1);
     dynamic.header.set(gbwt::GBWTHeader::FLAG_METADATA);
 
-    // ---- Compress to GBWT and save ----
+    // Compress and save.
     gbwt::GBWT index(dynamic);
     {
         std::ofstream out("test.gbwt", std::ios::binary);
@@ -129,7 +126,7 @@ int main()
     std::cerr << "Wrote test.gbwt: " << index.sequences() << " sequences, "
               << index.sigma() << " alphabet size\n";
 
-    // ---- Write GFA (S-lines only — no edges needed for node lengths) ----
+    // GFA with S-lines only: gibd reads node lengths from it.
     // Sequence is N_LEN A's (symbolic; tools only read the length).
     {
         std::ofstream gfa("test.gfa");

@@ -21,9 +21,6 @@
 #include <stdexcept>
 #include <vector>
 
-#ifndef MOVE_FF   // defined by move_lf.h (fast-forward counters)
-#define MOVE_FF(site, n) ((void)0)
-#endif
 
 struct MovePhi {
     struct __attribute__((packed)) Row {
@@ -65,7 +62,7 @@ struct MovePhi {
 
     // Length capping (Brown & Langmead 2026). Every interval is cut into pieces
     // of at most L = CAP * ceil(n / R) text positions of its sequence; Phi^{-1}
-    // stays linear on each piece. The sweep takes every Phi step from a distinct
+    // stays linear on each piece. The enumeration takes every Phi step from a distinct
     // row (each root-record row is located once), so a query's fast-forward is
     // charged to the run starts inside its piece's image: at most L per start,
     // (R + n / L) * L <= (CAP + 1) n + R in total, against R times the longest
@@ -156,7 +153,6 @@ struct MovePhi {
         const uint64_t q = r.dest + (p - r.start);
         uint32_t j = r.dest_run;
         while (j + 1 < rows.size() && rows[j + 1].start <= q) ++j;
-        MOVE_FF(PHI_NEXT, j - r.dest_run);
         k = j;
         return q;
     }

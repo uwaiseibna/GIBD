@@ -1,34 +1,17 @@
 /*
- * gfa2gbwt.cpp  —  build a bidirectional GBWT from the P- and W-lines of a GFA
+ * gfa2gbwt  —  build a bidirectional GBWT from the P- and W-lines of a GFA.
  *
- * Reads the path (P) AND walk (W) lines of a GFA, encodes each as an oriented
- * node sequence, and builds a bidirectional DynamicGBWT (interleaved fwd/rev,
- * the form gibd expects). Each path becomes one GBWT sequence with
- * full PanSN metadata so gibd can reconstruct sample#hap#contig names:
- *   - P-line  <name>           -> sample=<name>, contig="", hap=0, offset=0
- *                                 (each haplotype thread keeps a DISTINCT sample
- *                                  name, so merge mode does not collapse them).
- *   - W-line  <sample> <hap> <contig> <start> <end> <walk>
- *                              -> sample,hap,contig as given, offset=<start>
- *                                 (a chunked HPRC reference appears as W-lines;
- *                                  --ref-prefix GRCh38#0#chr22 then matches and
- *                                  the subrange start gives the bp offset).
+ * Each path or walk becomes one GBWT sequence (forward and reverse, the form
+ * gibd expects) with PanSN metadata, so gibd can report sample#hap#contig
+ * names and find the reference genome with --ref-prefix:
+ *   - P-line <name>                                -> sample <name>, haplotype 0
+ *   - W-line <sample> <hap> <contig> <start> <end>  -> as given, offset <start>
+ * Every haplotype keeps its own sample name (`vg gbwt -E` would name them all
+ * _gbwt_ref), and the offset of a reference fragment gives its chromosome
+ * position. Node ids are the GFA segment ids, so the GBWT lines up with the
+ * GFA passed to gibd --gfa.
  *
- * vg's `vg gbwt -E` collapses every haplotype sample name to _gbwt_ref; building
- * the GBWT here instead preserves per-thread identity AND the reference path, so
- * the same chunk can be swept in merge (cM) mode with correct thread-thread
- * labels and a working reference coordinate system.
- *
- * Node ids are taken verbatim from the GFA segment ids, so the resulting GBWT
- * lines up with the same GFA passed to gibd --gfa for node lengths.
- *
- * Usage:  gfa2gbwt  graph.gfa  out_basename
- *   -> writes out_basename.gbwt
- *
- * Build (see Makefile gfa2gbwt rule), or:
- *   g++ -std=c++17 -O2 -I deps/gbwt/include -I $SDSL_PREFIX/include \
- *       -L deps/gbwt/lib -L $SDSL_PREFIX/lib \
- *       gfa2gbwt.cpp -o gfa2gbwt -lgbwt -lsdsl -lzstd
+ * Usage: gfa2gbwt graph.gfa out_basename   (writes out_basename.gbwt)
  */
 
 #include <gbwt/dynamic_gbwt.h>
@@ -131,7 +114,7 @@ int main(int argc, char** argv)
     if (recs.empty())
         throw std::runtime_error("No P- or W-lines found in " + gfa_path);
 
-    // ---- Build bidirectional DynamicGBWT (interleave fwd $ rev $ per path) ----
+    // Bidirectional DynamicGBWT: forward $ reverse $ for every path.
     gbwt::vector_type text;
     for (const auto& r : recs) {
         text.insert(text.end(), r.nodes.begin(), r.nodes.end());
@@ -144,7 +127,7 @@ int main(int argc, char** argv)
     gbwt::DynamicGBWT dynamic;
     dynamic.insert(text, /*has_both_orientations=*/true);
 
-    // ---- Metadata: full PanSN (distinct sample names + contig names + offset) ----
+    // PanSN metadata: sample, contig and haplotype names, and offsets.
     std::vector<std::string> sample_names, contig_names;
     std::map<std::string, gbwt::size_type> sample_idx, contig_idx;
     auto intern = [](const std::string& s, std::vector<std::string>& names,
@@ -171,7 +154,7 @@ int main(int argc, char** argv)
     dynamic.metadata.setHaplotypes(max_hap > 0 ? max_hap : 1);
     dynamic.header.set(gbwt::GBWTHeader::FLAG_METADATA);
 
-    // ---- Compress and save ----
+    // Compress and save.
     gbwt::GBWT index(dynamic);
     const std::string out_file = out_base + ".gbwt";
     std::ofstream out(out_file, std::ios::binary);

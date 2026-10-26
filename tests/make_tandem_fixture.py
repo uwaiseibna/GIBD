@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-# Forward-coherent multi-node tandem-CNV fixture (NO inverted repeat).
+# Forward multi-node tandem-CNV fixture (NO inverted repeat).
 # Unit = A(2) B(3) C(4) traversed a variable number of times by each haplotype,
 # ALL in + orientation. Union edges L->A, A->B, B->C, C->A, C->R make {A,B,C} a
-# multi-node SCC with zero both-orientation traversal — the case unrollCycles
-# should resolve to a DAG (SCC fallback 0) if the obstruction is purely about
-# inverted repeats.
+# cycle. gibd must report copy-number-aware matches across the array (checked in
+# `make test`).
 import random
 random.seed(7)
 def seq(n): return ''.join(random.choice('ACGT') for _ in range(n))

@@ -127,7 +127,6 @@ inline void buildFastLocate(const gbwt::GBWT& index, const MoveLF& mv, gbwt::Fas
             if (to_end) break;
             curr = {R.succ, R.dest + (p - R.start)};
             k = mv.seek(R.dest_run, curr.second);
-            MOVE_FF(FL_WALK, k - R.dest_run);
         }
         for (uint32_t h : pend) head_tl[h] = NO_TAIL;   // its predecessor is in an earlier sequence
         seq_len[i] = (uint32_t)walk;

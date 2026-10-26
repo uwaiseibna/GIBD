@@ -2,7 +2,7 @@
 """pd_check.py — regression check for mismatch-tolerant (--max-gap-cM) chaining.
 
 Reads a sim_panel.py panel with within-IBD PRIVATE DELETIONS (indels invisible to a
-SNP-only caller) and the two graph outputs (bp-gap and cM-gap merge modes). Asserts:
+SNP-only caller) and the two graph outputs (chained on the bp gap and on the cM gap). Asserts:
   - cM-gap RECALL of true founder-IBD == 1.0 and strictly beats bp-gap (which breaks
     at the private-deletion reference-bp gaps it cannot bridge),
   - both modes PRECISION == 1.0 against the full founder ground truth (no false IBD).

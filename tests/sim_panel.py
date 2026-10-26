@@ -1,45 +1,43 @@
 #!/usr/bin/env python3
 """
-sim_panel.py — simulate a many-haplotype variation graph with a segregating
-non-reference INSERTION and a segregating INVERSION, for population-scale
-IBD-moat measurement against a real hap-ibd run.
+sim_panel.py — simulate haplotypes in a small variation graph with a shared
+insertion, a shared deletion and an inversion, with known IBD.
 
 Population model: K founders, each a random SNP haplotype over S sites. Each
 sample haplotype is a Li-Stephens mosaic that copies a founder and switches with
 probability p_switch per site (recombination). Copying the same founder over a
 region => true IBD between samples there.
   INSERTION: a subset of founders carry a multi-kb insertion at one locus, so a
-    sample copying a carrier founder across it carries the insertion. Both the
-    graph and hap-ibd detect the spanning IBD (flank SNPs); the graph additionally
-    LABELS co-inheritance (insertion=1). => annotation contribution.
+    sample copying a carrier founder across it carries the insertion; IBD pairs
+    across it share the insertion (insertion=1).
+  DELETION: a subset of founders lack a reference segment (deletion=1 likewise).
   INVERSION: an orientation-only flip of a region, carried by a random subset of
     samples INDEPENDENTLY of the SNP mosaic (--inv-freq). Two samples can thus
-    share the founder background across the region (SNP-IBD) yet differ in
-    orientation -- the pair hap-ibd BREAKS on (mirrored ref-coord alleles
-    mismatch) but the graph keeps whole via forward-vs-reverse matching
-    (inverted=1). => DETECTION moat.
+    share the founder background across the region yet differ in orientation;
+    gibd keeps such a segment whole through the inverted match (inverted=1).
+  PRIVATE DELETIONS (optional): blocks that each haplotype omits independently,
+    i.e. indel differences inside IBD segments.
 
-Graph (proper variation graph, so SNP alt-alleles are tiny bubble nodes that are
-NOT mistaken for insertions):
-    filler F_s (shared backbone, 100 bp) -- [R_s | A_s] (1 bp SNP bubble) -- ...
+Graph (a proper variation graph, so SNP alt-alleles are tiny bubble nodes that
+are NOT mistaken for insertions):
+    filler F_s (shared backbone) -- [R_s | A_s] (1 bp SNP bubble) -- ...
     reference path (P-line 0) = all ref alleles, no insertion.
-    off-reference nodes: A_s (1 bp, < min-insertion-bp) and the INS node (>=50 bp).
 
 Outputs:
-    <out>.gfa   variation graph (S-lines + P-lines: ref path 0, then N samples)
-    <out>.map   PLINK genetic map (chrom marker cM bp) for cM lengths
-    <out>.truth per-PAIR true IBD spans over the insertion locus (founder-IBD
-                ground truth; carrier=1 => spans the insertion). For recall.
-    <out>.vcf   SNP-only diploid VCF (individual k = sample-haps 2k,2k+1) to run a
-                REAL hap-ibd on the identical panel. The INS is absent by design.
+    <out>.gfa        variation graph (S-lines + P-lines: ref path 0, then N samples)
+    <out>.map        PLINK genetic map (chrom marker cM bp)
+    <out>.truth      per-pair true IBD spans over the insertion locus
+    <out>.del_truth  the same over the deletion locus
+    <out>.inv_truth  the same over the inversion region (opp_orient=1: the two
+                     haplotypes differ in orientation there)
+    <out>.copy       the founder each haplotype copies at each site
+    <out>.vcf        diploid VCF of the same haplotypes (SNPs and the SV loci as
+                     biallelic markers), for comparison with linear IBD tools
 
-Three-way comparison:
-    GRAPH (full):  gfa2gbwt <out>.gfa <out> ;
-        gibd --gfa <out>.gfa --ref-path 0 --map <out>.map ... <out>.gbwt
-    LINEAR view :  same + --no-insertion        (graph-internal linear baseline)
-    REAL hap-ibd:  hap-ibd gt=<out>.vcf map=<out>.map out=<out>.hapibd
-    Recall each vs <out>.truth's carrier pairs (the insertion-spanning IBD).
-    Map sim hap h <-> hap-ibd (ind, hap):  h = 2*ind + (hap-1).
+Usage:
+    python3 sim_panel.py --out demo [options]
+    gfa2gbwt demo.gfa demo
+    gibd --gfa demo.gfa --ref-path 0 --map demo.map -o demo.ibd.tsv demo.gbwt
 """
 import sys, random, argparse
 
@@ -67,7 +65,7 @@ ap.add_argument("--del-carrier-founders", type=int, default=3)  # of K LACK the 
 #     founder) DIFFER wherever one privately deleted a block the other kept -- a
 #     within-IBD-segment indel discordance, the case hap-ibd tolerates (it never
 #     sees these: they are EXCLUDED from the VCF, like real indels dropped from a
-#     SNP-only callset) but an exact-match graph sweep BREAKS on. The reference-bp
+#     SNP-only callset) but an exact-match graph method BREAKS on. The reference-bp
 #     gap of such a block (>= --priv-del-bp) exceeds --max-gap-bp, so bp-gap
 #     chaining cannot bridge it; cM-gap chaining (the indel is cM-negligible) can.
 #     This is the controlled scenario that distinguishes --max-gap-cM from bp-gap.
@@ -142,7 +140,7 @@ total_bp = pos
 
 # ---- emit GFA ----
 with open(a.out + ".gfa", "w") as g:
-    # S-lines (sequence length is what the sweep uses; content is filler)
+    # S-lines (sequence length is what gibd uses; content is filler)
     for s in range(S):
         g.write(f"S\t{F(s)}\t{'A'*a.filler_bp}\n")
         g.write(f"S\t{R(s)}\tA\n")
@@ -229,7 +227,6 @@ with open(a.out + ".map", "w") as m:
 # ins_site (true IBD by descent). For each such pair we emit the maximal run around
 # ins_site where BOTH copy that founder, as a reference bp/cM interval. carrier=1
 # means the shared founder carries the INS => the IBD segment spans the insertion
-# (the moat: graph keeps it whole, linear hap-ibd should break/under-credit it).
 # Only pairs sharing the founder at ins_site are written (the locus-spanning set),
 # grouped by founder so cost is Sum_f g_f^2, not N^2.
 def ibd_span(ci, cj, f, anchor):
@@ -343,18 +340,17 @@ with open(a.out + ".vcf", "w") as v:
 
 # ---- per-pair INVERSION truth over the inversion region ------------------------
 # Pairs that co-inherit the same founder across inv_mid (SNP-IBD over the region).
-# moat=1 means they DIFFER in inversion status (one inverted, one not): a linear
-# method breaks (mirrored alleles mismatch) but the graph matches forward-vs-reverse
-# (inverted=1) and keeps the IBD whole. moat=0 = same status (both tools recover).
+# opp_orient=1 means they DIFFER in inversion status (one inverted, one not):
+# gibd matches them forward-vs-reverse (inverted=1) and keeps the IBD whole.
 inv_bp_lo, inv_bp_hi = bp[F(inv_lo)], bp[F(inv_hi + 1)]
 by_founder_inv = {}
 for i in range(N):
     by_founder_inv.setdefault(truth[i][inv_mid], []).append(i)
-n_inv_pairs = n_inv_moat = 0
+n_inv_pairs = n_inv_opp = 0
 with open(a.out + ".inv_truth", "w") as t:
     t.write(f"# inversion region sites [{inv_lo},{inv_hi}] ref bp "
             f"[{inv_bp_lo},{inv_bp_hi}]; per-pair SNP-IBD over inv_mid\n")
-    t.write("hap_i\thap_j\tfounder\tmoat\tinv_i\tinv_j\tstart_bp\tend_bp\tlen_sites\tcM\n")
+    t.write("hap_i\thap_j\tfounder\topp_orient\tinv_i\tinv_j\tstart_bp\tend_bp\tlen_sites\tcM\n")
     for f, members in by_founder_inv.items():
         for ai in range(len(members)):
             for aj in range(ai + 1, len(members)):
@@ -362,10 +358,10 @@ with open(a.out + ".inv_truth", "w") as t:
                 lo, hi = ibd_span(truth[i], truth[j], f, inv_mid)
                 sbp, ebp = bp[F(lo)], bp[F(hi + 1)]
                 cm = (ebp - sbp) * rate
-                moat = 1 if samp_inv[i] != samp_inv[j] else 0
-                t.write(f"{i}\t{j}\t{f}\t{moat}\t{int(samp_inv[i])}\t{int(samp_inv[j])}"
+                opp = 1 if samp_inv[i] != samp_inv[j] else 0
+                t.write(f"{i}\t{j}\t{f}\t{opp}\t{int(samp_inv[i])}\t{int(samp_inv[j])}"
                         f"\t{sbp}\t{ebp}\t{hi-lo+1}\t{cm:.6f}\n")
-                n_inv_pairs += 1; n_inv_moat += moat
+                n_inv_pairs += 1; n_inv_opp += opp
 
 n_carry = sum(samp_carry)
 n_carrier_pairs = sum(1 for f in by_founder if f in carriers
@@ -390,6 +386,6 @@ print(f"  {a.out}.truth     : {n_pairs} INS locus-spanning IBD pairs "
 print(f"  {a.out}.del_truth : {n_del_pairs} DEL locus-spanning IBD pairs "
       f"({n_del_carrier} carrier/deletion-spanning)")
 print(f"  {a.out}.inv_truth : {n_inv_pairs} INV region SNP-IBD pairs "
-      f"({n_inv_moat} moat = differ in orientation, linear breaks)")
+      f"({n_inv_opp} differ in orientation)")
 print(f"  {a.out}.vcf       : {n_indiv} diploid individuals (SNPs + INS + DEL "
-      f"as biallelic markers, for linear hap-ibd)")
+      f"as biallelic markers)")

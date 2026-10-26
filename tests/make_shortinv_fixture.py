@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Short inversion inside long IBD (merge mode, inverted-match floor).
+# Short inversion inside long IBD (IBD segments, inverted-match floor).
 # Thirty 2 kb reference nodes on a 1 cM/kb map; nodes 14-16 (bp 26000-32000) are
 # an inversion carried by two haplotypes (one locus). With --min-extend-cM 10 the
 # forward floor is 10 kb, longer than the 6 kb inversion: the inverted match is

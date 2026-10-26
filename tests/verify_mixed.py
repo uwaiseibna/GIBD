@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# Soundness verifier for cyclic-region sweep output (catches FALSE IBD).
+# Soundness verifier for gibd gMEM output on cyclic regions (catches FALSE IBD).
 #
 # For each reported match (hap_a, hap_b, inverted, len_bp), the two haplotypes must
 # ACTUALLY share a subpath of >= that bp length: a forward common substring when
 # inverted=0, or a common substring of a vs reverse-complement(b) when inverted=1.
 # We bound every match by the TRUE longest common substring (in bp, over oriented
 # nodes) of the appropriate orientation. A match longer than that bound is IBD the
-# sweep fabricated -> FAIL. (Under-calling/missing matches is conservative = OK.)
+# gibd fabricated -> FAIL. (Under-calling/missing matches is conservative = OK.)
 #
-# Usage: verify_mixed.py <graph.gfa> <sweep.tsv> [label]
+# Usage: verify_mixed.py <graph.gfa> <gmems.tsv> [label]
 import sys
 
 gfa, tsv = sys.argv[1], sys.argv[2]

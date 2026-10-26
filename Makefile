@@ -22,10 +22,10 @@ VPATH      = src
 all: gibd gfa2gbwt
 
 # gibd = a shared header + the enumerator + the CLI driver:
-#   sweep_common.h    shared types/helpers (SeedOut, RefCoords, PathView, Options, ...)
-#   sweep_dagfree.cpp bidirectional gMEM enumerator over the move structures (move_*.h)
-#   sweep_main.cpp    CLI, IBD segments, SV labels, output
-gibd: sweep_dagfree.cpp sweep_main.cpp sweep_common.h sweep_instrument.h mask_rare.h move_lf.h move_phi.h move_locate.h move_balance.h
+#   common.h       shared types/helpers (SeedOut, RefCoords, PathView, Options, ...)
+#   enumerate.cpp  bidirectional gMEM enumerator over the move structures (move_*.h)
+#   main.cpp       CLI, IBD segments, SV labels, output
+gibd: enumerate.cpp main.cpp common.h mask_rare.h move_lf.h move_phi.h move_locate.h move_balance.h
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(filter %.cpp,$^) -o $@ $(LDFLAGS)
 
 gfa2gbwt: gfa2gbwt.cpp
@@ -45,90 +45,87 @@ test: all make_test_gbwt
 
 check:
 	$(BIN)/make_test_gbwt
-	$(BIN)/gibd    --gfa test.gfa --min-bp 600 -o sweep.tsv test.gbwt
+	$(BIN)/gibd    --gfa test.gfa --min-bp 600 -o gibd.tsv test.gbwt
 	@echo "--- Seed set parity (incl. inversions) ---"
 	diff <(awk 'NR>1{print $$1,$$2,$$3,$$7,$$8,$$9}' $(EXP)/test.gmems.tsv | sort) \
-	     <(awk 'NR>1{print $$1,$$2,$$3,$$5,$$6,$$7}' sweep.tsv  | sort) \
+	     <(awk 'NR>1{print $$1,$$2,$$3,$$5,$$6,$$7}' gibd.tsv  | sort) \
 	  && echo "PASS: seed sets match" || echo "FAIL: seed sets differ"
-	@echo "--- Position recovery (--locate, incl. inversions) ---"
-	$(BIN)/gibd --gfa test.gfa --min-bp 600 --locate -o sweep_loc.tsv test.gbwt
+	@echo "--- Positions (incl. inversions) ---"
+	$(BIN)/gibd --gfa test.gfa --min-bp 600 -o gibd_loc.tsv test.gbwt
 	diff <(awk 'NR>1{print $$1,$$2,$$3,$$4,$$5,$$6,$$7,$$8}'    $(EXP)/test.gmems.tsv | sort) \
-	     <(awk 'NR>1{print $$1,$$2,$$3,$$8,$$9,$$10,$$5,$$6}'   sweep_loc.tsv | sort) \
+	     <(awk 'NR>1{print $$1,$$2,$$3,$$8,$$9,$$10,$$5,$$6}'   gibd_loc.tsv | sort) \
 	  && echo "PASS: positions match" || echo "FAIL: positions differ"
 	@echo "--- Insertion labeling (--ref-path 0) ---"
-	$(BIN)/gibd --gfa test.gfa --min-bp 600 --ref-path 0 -o sweep_ins.tsv test.gbwt
+	$(BIN)/gibd --gfa test.gfa --min-bp 600 --ref-path 0 -o gibd_ins.tsv test.gbwt
 	@# (5,6) spans off-reference node 11 -> insertion=1; (0,3) is on-reference -> 0.
-	@ins56=$$(awk '$$1==5 && $$2==6 {print $$11}' sweep_ins.tsv); \
-	 ins03=$$(awk '$$1==0 && $$2==3 {print $$11}' sweep_ins.tsv); \
+	@ins56=$$(awk '$$1==5 && $$2==6 {print $$11}' gibd_ins.tsv); \
+	 ins03=$$(awk '$$1==0 && $$2==3 {print $$11}' gibd_ins.tsv); \
 	 if [ "$$ins56" = "1" ] && [ "$$ins03" = "0" ]; then \
 	   echo "PASS: insertion labels correct (5,6)=1 (0,3)=0"; \
 	 else \
 	   echo "FAIL: insertion labels (5,6)=$$ins56 (0,3)=$$ins03"; \
 	 fi
-	@echo "--- Error-gap bridging (merge mode, --map) ---"
+	@echo "--- Error-gap bridging (--map) ---"
 	@# Synthetic map: 1 cM per 100 bp over the reference span.
 	printf 'chr1\t.\t0.0\t0\nchr1\t.\t30.0\t3000\n' > test_map.tsv
-	@# graph mode chains in cM; map is 1 cM/100 bp, so --max-gap-cM 10 == old 1000 bp.
+	@# gMEMs chain on the genetic gap; at 1 cM/100 bp, --max-gap-cM 10 == 1000 bp.
 	$(BIN)/gibd --gfa test.gfa --min-bp 600 --ref-path 0 --map test_map.tsv --min-markers 0 \
-	  --min-seed-cM 2 --min-output-cM 2 --max-gap-cM 10 -o sweep_bridge.tsv test.gbwt
+	  --min-seed-cM 2 --min-output-cM 2 --max-gap-cM 10 -o gibd_bridge.tsv test.gbwt
 	$(BIN)/gibd --gfa test.gfa --min-bp 600 --ref-path 0 --map test_map.tsv --min-markers 0 \
-	  --min-seed-cM 2 --min-output-cM 2 --max-gap-cM 0 --min-mac 1 -o sweep_split.tsv test.gbwt
+	  --min-seed-cM 2 --min-output-cM 2 --max-gap-cM 0 --min-mac 1 -o gibd_split.tsv test.gbwt
 	$(BIN)/gibd --gfa test.gfa --min-bp 600 --ref-path 0 --map test_map.tsv --min-markers 0 \
-	  --min-seed-cM 2 --min-output-cM 2 --max-gap-cM 0 -o sweep_mac.tsv test.gbwt
+	  --min-seed-cM 2 --min-output-cM 2 --max-gap-cM 0 -o gibd_mac.tsv test.gbwt
 	@# Merge columns: sample_a(1) hap_a(2) sample_b(3) hap_b(4) chrom(5)
 	@#               start_bp(6) end_bp(7) cM(8) type(9) inverted(10) insertion(11)
 	@# In the fixture sample id == path id and each sample has one haplotype.
-	@b=$$(awk 'NR>1 && $$1==9 && $$3==10' sweep_bridge.tsv | wc -l); \
-	 s=$$(awk 'NR>1 && $$1==9 && $$3==10' sweep_split.tsv  | wc -l); \
-	 bspan=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$6"-"$$7}' sweep_bridge.tsv); \
+	@b=$$(awk 'NR>1 && $$1==9 && $$3==10' gibd_bridge.tsv | wc -l); \
+	 s=$$(awk 'NR>1 && $$1==9 && $$3==10' gibd_split.tsv  | wc -l); \
+	 bspan=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$6"-"$$7}' gibd_bridge.tsv); \
 	 if [ "$$b" = "1" ] && [ "$$s" = "2" ]; then \
 	   echo "PASS: (9,10) bridges to 1 segment [$$bspan] at gap=1000, splits to 2 at gap=0"; \
 	 else \
 	   echo "FAIL: (9,10) bridge=$$b (expected 1) split=$$s (expected 2)"; \
 	 fi
-	@m=$$(awk 'NR>1 && $$1==9 && $$3==10' sweep_mac.tsv | wc -l); \
+	@m=$$(awk 'NR>1 && $$1==9 && $$3==10' gibd_mac.tsv | wc -l); \
 	 if [ "$$m" = "1" ]; then \
 	   echo "PASS: (9,10) private substitution bridged at gap=0 by --min-mac 2 (graph min-mac)"; \
 	 else \
 	   echo "FAIL: (9,10) --min-mac 2 at gap=0 gave $$m segment(s) (expected 1)"; \
 	 fi
-	@echo "--- Sub-seed-flank emission (Step 1: floor lowered to min-extend-cM) ---"
-	@# (0,11) right flank 7-8 is 400 bp (< raw min-bp 600). In merge mode the
+	@echo "--- Sub-seed-flank emission (floor lowered to min-extend-cM) ---"
+	@# (0,11) right flank 7-8 is 400 bp (< min-bp 600). With --map the
 	@# floor drops to min-extend-cM, so it is emitted and bridges to reach bp 1600.
-	@n=$$(awk 'NR>1 && $$1==0 && $$3==11' sweep_bridge.tsv | wc -l); \
-	 end=$$(awk 'NR>1 && $$1==0 && $$3==11 {print $$7}' sweep_bridge.tsv); \
+	@n=$$(awk 'NR>1 && $$1==0 && $$3==11' gibd_bridge.tsv | wc -l); \
+	 end=$$(awk 'NR>1 && $$1==0 && $$3==11 {print $$7}' gibd_bridge.tsv); \
 	 if [ "$$n" = "1" ] && [ "$$end" = "1600" ]; then \
 	   echo "PASS: (0,11) merges to 1 segment reaching bp $$end (sub-min-bp flank bridged)"; \
 	 else \
 	   echo "FAIL: (0,11) segments=$$n end_bp=$$end (expected 1 and 1600)"; \
 	 fi
-	@echo "--- SV-aware gap labeling (Step 3) ---"
-	@# SHARED-SV semantics: an SV is labeled only when BOTH haplotypes co-carry it
-	@# (identical-by-descent), matching vg deconstruct's per-snarl allele comparison.
+	@echo "--- SV-aware gap labeling ---"
+	@# An SV is labeled only when BOTH haplotypes carry it.
 	@# (5,6): BOTH carry node 11 => SHARED insertion => insertion=1.
 	@# (0,5): only path5 carries node 11 (one-sided) => NOT shared => insertion=0.
 	@# (9,10): nodes 13 vs 14 off-ref on BOTH sides, net 0 => SUBSTITUTION => insertion=0.
 	@# (0,4): inversion => inverted=1, insertion=0.
-	@i56=$$(awk 'NR>1 && $$1==5 && $$3==6 {print $$11}' sweep_bridge.tsv); \
-	 i05=$$(awk 'NR>1 && $$1==0 && $$3==5 {print $$11}' sweep_bridge.tsv); \
-	 i910=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$11}' sweep_bridge.tsv); \
-	 v04=$$(awk 'NR>1 && $$1==0 && $$3==4 {print $$10}' sweep_bridge.tsv); \
-	 i04=$$(awk 'NR>1 && $$1==0 && $$3==4 {print $$11}' sweep_bridge.tsv); \
+	@i56=$$(awk 'NR>1 && $$1==5 && $$3==6 {print $$11}' gibd_bridge.tsv); \
+	 i05=$$(awk 'NR>1 && $$1==0 && $$3==5 {print $$11}' gibd_bridge.tsv); \
+	 i910=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$11}' gibd_bridge.tsv); \
+	 v04=$$(awk 'NR>1 && $$1==0 && $$3==4 {print $$10}' gibd_bridge.tsv); \
+	 i04=$$(awk 'NR>1 && $$1==0 && $$3==4 {print $$11}' gibd_bridge.tsv); \
 	 if [ "$$i56" = "1" ] && [ "$$i05" = "0" ] && [ "$$i910" = "0" ] && [ "$$v04" = "1" ] && [ "$$i04" = "0" ]; then \
 	   echo "PASS: (5,6) shared insertion=1; (0,5) one-sided insertion=0; (9,10) substitution insertion=0; (0,4) inverted=1 insertion=0"; \
 	 else \
 	   echo "FAIL: (5,6) ins=$$i56 (exp 1); (0,5) ins=$$i05 (exp 0); (9,10) ins=$$i910 (exp 0); (0,4) inv=$$v04 ins=$$i04 (exp 1,0)"; \
 	 fi
-	@echo "--- Substitution / inversion must NOT be labeled DELETION (guards the real-HPRC 85669 over-call) ---"
+	@echo "--- Substitution / inversion must NOT be labeled DELETION ---"
 	@# (9,10): nodes 13 vs 14 => each hap carries its OWN sequence across the gap (a
-	@# SUBSTITUTION; net reference-skip 0 on both sides). The pre-fix scan asked "did the
-	@# hap skip reference nodes?" not "skip WITHOUT carrying its own sequence?", so every
-	@# substitution was mislabeled deletion=1 (85669 false calls on real HPRC chr22). The
-	@# bridged [0-1600] segment must be deletion=0 (and insertion=0). And the (0,4)
-	@# inversion: a reverse traversal is NOT a skip, so deletion=0 (inverted=1 stands alone).
-	@d910=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$12}' sweep_bridge.tsv); \
-	 i910=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$11}' sweep_bridge.tsv); \
-	 d04=$$(awk 'NR>1 && $$1==0 && $$3==4 {print $$12}' sweep_bridge.tsv); \
+	@# SUBSTITUTION; net reference-skip 0 on both sides), so the bridged [0-1600] segment
+	@# must be deletion=0 (and insertion=0). The (0,4) inversion: a reverse traversal is
+	@# NOT a skip, so deletion=0 (inverted=1 stands alone).
+	@d910=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$12}' gibd_bridge.tsv); \
+	 i910=$$(awk 'NR>1 && $$1==9 && $$3==10 {print $$11}' gibd_bridge.tsv); \
+	 d04=$$(awk 'NR>1 && $$1==0 && $$3==4 {print $$12}' gibd_bridge.tsv); \
 	 if [ "$$d910" = "0" ] && [ "$$i910" = "0" ] && [ "$$d04" = "0" ]; then \
 	   echo "PASS: substitution (9,10) deletion=0 insertion=0; inversion (0,4) deletion=0 (no substitution/inversion mislabeled as a reference skip)"; \
 	 else \
@@ -156,36 +153,35 @@ check:
 	   echo "FAIL: on=$$on (exp 1) onspan=$$onspan (exp 1); no-inv segs=$$ni (exp 2) spanning=$$nispan (exp 0)"; \
 	 fi
 	@echo "--- Cyclic fixtures: gMEMs == expected brute-force gMEMs (tandem, inverted tandem, mixed) ---"
-	@# Cycles are handled natively (no unroll, no mask). The expected file lists every occurrence
-	@# pair; the sweep keeps one witness per (subpath, pair, orientation), so compare on that
+	@# The expected file lists every occurrence pair; gibd keeps one witness per (subpath, pair, orientation), so compare on that
 	@# key, and require every reported witness to be one of the expected occurrence pairs.
 	python3 $(TESTS)/make_tandem_fixture.py >/dev/null
 	python3 $(TESTS)/make_inv_tandem_fixture.py >/dev/null
 	python3 $(TESTS)/make_mixed_fixture.py >/dev/null
 	@for f in tandem inv_tandem mixed; do \
 	   $(BIN)/gfa2gbwt $$f.gfa $$f 2>/dev/null; \
-	   $(BIN)/gibd --gfa $$f.gfa --ref-path 0 --min-bp 1000 $$f.gbwt -o $$f.sweep.tsv 2>/dev/null; \
+	   $(BIN)/gibd --gfa $$f.gfa --ref-path 0 --min-bp 1000 $$f.gbwt -o $$f.gibd.tsv 2>/dev/null; \
 	   if diff <(awk 'NR>1{print $$1,$$2,$$3,$$7,$$8,$$9}' $(EXP)/$$f.gmems.tsv | sort -u) \
-	           <(awk 'NR>1{print $$1,$$2,$$3,$$5,$$6,$$7}' $$f.sweep.tsv  | sort -u) >/dev/null \
+	           <(awk 'NR>1{print $$1,$$2,$$3,$$5,$$6,$$7}' $$f.gibd.tsv  | sort -u) >/dev/null \
 	      && [ -z "$$(comm -13 <(awk 'NR>1{print $$1,$$2,$$3,$$4,$$5,$$6,$$7,$$8,$$9}' $(EXP)/$$f.gmems.tsv | sort) \
-	                          <(awk 'NR>1{print $$1,$$2,$$3,$$8,$$9,$$10,$$5,$$6,$$7}' $$f.sweep.tsv | sort))" ]; then \
+	                          <(awk 'NR>1{print $$1,$$2,$$3,$$8,$$9,$$10,$$5,$$6,$$7}' $$f.gibd.tsv | sort))" ]; then \
 	     echo "PASS: $$f matches the expected gMEMs (key sets equal, every witness is a true occurrence pair)"; \
 	   else echo "FAIL: $$f differs from the expected gMEMs"; fi; \
 	 done
-	@bp3800=$$(awk 'NR>1 && $$6==3800' tandem.sweep.tsv | wc -l); \
-	 bp5600=$$(awk 'NR>1 && $$6==5600' tandem.sweep.tsv | wc -l); \
-	 inv3600=$$(awk 'NR>1 && $$3==1 && $$6==3600' inv_tandem.sweep.tsv | wc -l); \
-	 inv5400=$$(awk 'NR>1 && $$3==1 && $$6==5400' inv_tandem.sweep.tsv | wc -l); \
+	@bp3800=$$(awk 'NR>1 && $$6==3800' tandem.gibd.tsv | wc -l); \
+	 bp5600=$$(awk 'NR>1 && $$6==5600' tandem.gibd.tsv | wc -l); \
+	 inv3600=$$(awk 'NR>1 && $$3==1 && $$6==3600' inv_tandem.gibd.tsv | wc -l); \
+	 inv5400=$$(awk 'NR>1 && $$3==1 && $$6==5400' inv_tandem.gibd.tsv | wc -l); \
 	 if [ "$$bp3800" -gt 0 ] && [ "$$bp5600" -gt 0 ] && [ "$$inv3600" -gt 0 ] && [ "$$inv5400" -gt 0 ]; then \
 	   echo "PASS: copy-number-aware tandem IBD (3800+5600 bp) and inverted-repeat inversions (3600+5400 bp)"; \
 	 else \
 	   echo "FAIL: tandem bp3800=$$bp3800 bp5600=$$bp5600 inv_tandem inv3600=$$inv3600 inv5400=$$inv5400 (all exp >0)"; \
 	 fi
-	@if python3 $(TESTS)/verify_mixed.py mixed.gfa mixed.sweep.tsv coherent >/dev/null 2>&1; then \
+	@if python3 $(TESTS)/verify_mixed.py mixed.gfa mixed.gibd.tsv mixed >/dev/null 2>&1; then \
 	   echo "PASS: mixed-orientation cycles sound (every match backed by a genuine shared subpath)"; \
 	 else \
 	   echo "FAIL: FALSE IBD on mixed-orientation cycles:"; \
-	   python3 $(TESTS)/verify_mixed.py mixed.gfa mixed.sweep.tsv coherent; \
+	   python3 $(TESTS)/verify_mixed.py mixed.gfa mixed.gibd.tsv mixed; \
 	 fi
 	@echo "--- Graph IBD: cM-gap chaining recovers IBD fragmented by within-IBD indels ---"
 	@# sim panel with PRIVATE per-haplotype deletions (absent from any SNP-only VCF) =

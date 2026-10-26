@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# Mixed-orientation cycle fixture — the case AMY1 exposed that --unroll-coherent's
-# per-RUN majority classification cannot make sigma-equivariant: a single maximal
-# cyclic run that contains BOTH canonical (+) and anti-canonical (-) steps.
+# Mixed-orientation cycle fixture: a single maximal cyclic run that contains BOTH
+# canonical (+) and anti-canonical (-) steps.
 #
 # Unit A(2) B(3) C(4), cyclic via back-edge C->A. "Hairpin" haplotypes traverse a
 # forward copy then immediately an inverted copy (2+3+4+ 4-3-2-) -> one contiguous
@@ -28,8 +27,7 @@ paths = {
     'h4_HP2': fmt([Lf, A,B,C, A,B,C, Ci,Bi,Ai, Rf]),      # fwd->inv hairpin, later turn
     'h5_RHP': fmt([Lf, Ci,Bi,Ai, A,B,C, Rf]),             # inv->fwd hairpin (-->+ crossing):
                                                           # together with h3/h4 makes crossings
-                                                          # go BOTH ways -> AMY1-like residual
-                                                          # that coherent cannot fully resolve
+                                                          # go BOTH ways
 }
 
 with open('mixed.gfa','w') as f:

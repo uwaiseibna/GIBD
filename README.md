@@ -1,4 +1,4 @@
-# GIBD: Structural Variant aware identity-by-descent (IBD) detection in pangenome graphs
+# GIBD: SV-aware identity-by-descent in pangenome graphs
 
 GIBD finds identity-by-descent (IBD) segments between pairs of haplotypes in a
 pangenome graph. It labels each segment with the structural variants (SVs) that
@@ -30,8 +30,17 @@ orientations) and z is the number of matching pairs of occurrences.
 If you use GIBD, please cite:
 
 > Uwaise Islam, Franco Marsico, Erik Garrison, Christina Boucher.
-> *Structural Variant Aware Identity-by-Descent Detection on Pangenome Graph.*
+> *GIBD: Pairwise-Maximal Matching on Pangenome Graphs for IBD Detection.*
 > 2026. (Preprint link to be added.)
+
+```bibtex
+@article{islam2026gibd,
+  title   = {{GIBD}: Pairwise-Maximal Matching on Pangenome Graphs for {IBD} Detection},
+  author  = {Islam, Uwaise and Marsico, Franco and Garrison, Erik and Boucher, Christina},
+  year    = {2026},
+  note    = {Preprint}
+}
+```
 
 ## Installation
 
@@ -82,7 +91,10 @@ python3 tests/sim_panel.py --sites 2000 --founders 6 --samples 40 --p-switch 0.0
 GIBD needs three inputs to report IBD segments:
 
 1. **A GBWT** of the haplotypes (`*.gbwt`), and the **GFA** of the same graph
-   (`--gfa`) for node lengths. Node IDs in the two must agree.
+   (`--gfa`) for node lengths. Node IDs in the two must agree. For large graphs,
+   a two-column table of node lengths (`--nlen`) is much smaller and faster to
+   read than the GFA:
+   `awk -F'\t' '$1=="S"{print $2"\t"length($3)}' graph.gfa > graph.nlen`
 2. **A reference genome** in the graph, which places each match on the chromosome
    and is the baseline for SV labels: `--ref-prefix GRCh38#0#chr22` (every path
    whose PanSN name starts with the prefix) or `--ref-path <path id>`.
@@ -151,3 +163,7 @@ when a reference genome is given.
 inverted repeats and cycles, and runs in `test_out/`. It checks the gMEMs against a
 brute-force enumeration of all occurrence pairs (`tests/expected/`), the SV labels
 against the planted variants, and the rules for joining gMEMs into segments.
+
+## License
+
+To be added.
