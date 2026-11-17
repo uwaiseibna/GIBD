@@ -40,8 +40,9 @@ make_test_gbwt: make_test_gbwt.cpp
 # gibd columns:     hap_a(1) hap_b(2) inverted(3) end_node(4) len_nodes(5) len_bp(6) type(7) [a_start(8) a_end(9) b_start(10)]
 test: all make_test_gbwt
 	@mkdir -p test_out
-	@$(MAKE) --no-print-directory -C test_out -f $(CURDIR)/Makefile check \
-	  BIN=$(CURDIR) TESTS=$(CURDIR)/tests EXP=$(CURDIR)/tests/expected
+	@set -o pipefail; $(MAKE) --no-print-directory -C test_out -f $(CURDIR)/Makefile check \
+	  BIN=$(CURDIR) TESTS=$(CURDIR)/tests EXP=$(CURDIR)/tests/expected | tee test_out/check.log
+	@! grep -q '^FAIL' test_out/check.log
 
 check:
 	$(BIN)/make_test_gbwt
