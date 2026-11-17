@@ -280,6 +280,13 @@ check:
 	   && [ "$$c" = "0-22000:0:. 36000-60000:0:. " ] \
 	   && echo "PASS: orientation-aware IBS runs: short flank stub joins the run, run seeds without a flank seed, run < min-extend is not an extension" \
 	   || echo "FAIL: orientation-aware IBS runs: A [$$a] B [$$b] C [$$c]"
+	@echo "--- Inversion junctions: no IBD between carriers of different founders ---"
+	python3 $(TESTS)/sim_panel.py --sites 2000 --founders 6 --samples 40 --p-switch 0.002 --filler-bp 1000 \
+	  --cm-per-mb 2.0 --inv-freq 0.3 --seed 1 --out invj >/dev/null 2>&1
+	$(BIN)/gfa2gbwt invj.gfa invj >/dev/null 2>&1
+	$(BIN)/gibd --gfa invj.gfa --ref-path 0 --map invj.map --min-markers 0 --min-seed-cM 1 \
+	  --min-extend-cM 0.5 --min-output-cM 1 -o invj.tsv invj.gbwt 2>/dev/null
+	@python3 $(TESTS)/inv_junction_check.py invj.copy invj.tsv
 
 clean:
 	rm -f gibd gfa2gbwt make_test_gbwt
