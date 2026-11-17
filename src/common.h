@@ -559,8 +559,7 @@ struct MarkerSites {
 
 // The segment builder's piece test, applied at emission so that only gMEMs
 // that can be part of a segment are kept: a forward gMEM needs an on-reference
-// span of at least min-extend (cM and markers), an inverted one is kept at any
-// length.
+// span of at least min-extend (cM and markers).
 struct CmFilter {
     const PathView*   pv;
     const RefCoords*  refco;
@@ -575,6 +574,13 @@ struct CmFilter {
     // orientation, so the stub can be part of one orientation-aware IBS run.
     const std::vector<std::pair<int64_t, int64_t>>* loci = nullptr;
     int64_t tol = 0;
+    const std::vector<std::vector<std::pair<int64_t, int64_t>>>* runs = nullptr;
+    bool nearEdge(const std::vector<std::pair<int64_t, int64_t>>& v, int64_t sb, int64_t eb) const {
+        for (const auto& r : v)
+            for (int64_t x : {r.first, r.second})
+                if (std::llabs(x - sb) <= tol || std::llabs(x - eb) <= tol) return true;
+        return false;
+    }
     bool atLocusEdge(int64_t sb, int64_t eb) const {
         if (!loci || loci->empty()) return false;
         // Loci are sorted and disjoint: an edge within tol of x belongs to the
@@ -594,9 +600,9 @@ struct CmFilter {
         if (!refBpRange(*pv, s, *refco, *nlen, sb, eb))
             return false;
         cM = gmap->cMAtBp(eb) - gmap->cMAtBp(sb);
-        // Inverted matches are kept at any length: in the piece loop they can
-        // fill a hole of the forward matching (see main.cpp).
-        if (s.inverted) return true;
+        if (s.inverted)
+            return isExtend(sb, eb, cM) || !runs || nearEdge((*runs)[s.hap_a], sb, eb)
+                || nearEdge((*runs)[s.hap_b], sb, eb);
         if (cM >= min_cM && (!sites || sites->count(sb, eb) >= sites->extend_markers)) return true;
         return atLocusEdge(sb, eb);   // flank stub (ge_extend false)
     }
