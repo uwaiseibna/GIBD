@@ -25,7 +25,7 @@ each pair into IBD segments with the seed-and-extend model of hap-ibd
 
 > Uwaise Islam, Franco Marsico, Erik Garrison, Christina Boucher.
 > *Structural Variant Aware Identity-by-Descent Detection on Pangenome Graphs.*
-> 2026. (Preprint link to be added.)
+> 2026. [(Preprint)](https://www.biorxiv.org/content/10.64898/2026.11.05.764670v1)
 
 ```bibtex
 @article{islam2026gibd,
