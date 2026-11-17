@@ -50,7 +50,7 @@ git clone https://github.com/uwaiseibna/GIBD.git
 cd GIBD
 scripts/install_deps.sh        # builds sdsl-lite and GBWT into deps/
 make                           # builds gibd and gfa2gbwt
-make test                      # 21 checks on small graphs; each prints PASS
+make test                      # 22 checks on small graphs; each prints PASS
 ```
 
 If sdsl-lite and GBWT are already installed:
