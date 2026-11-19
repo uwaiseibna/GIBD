@@ -15,6 +15,7 @@
 #include "move_phi.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -399,19 +400,19 @@ struct Options {
 // (INT64_MAX / INT64_MIN when it has none). O(n / kB) space, O(n) to build.
 struct RefBlocks {
     static constexpr uint64_t kB = 64;
-    std::vector<std::vector<std::pair<int64_t, int64_t>>> b;
+    std::vector<std::vector<std::array<std::pair<int64_t, int64_t>, 2>>> b;
     void build(const std::vector<Walk32>& paths, const RefCoords& refco,
                const NodeLens& nlen) {
         b.assign(paths.size(), {});
         for (size_t p = 0; p < paths.size(); ++p) {
             const auto& w = paths[p];
             auto& bp = b[p];
-            bp.assign((w.size() + kB - 1) / kB, {INT64_MAX, INT64_MIN});
+            bp.assign((w.size() + kB - 1) / kB, {{{INT64_MAX, INT64_MIN}, {INT64_MAX, INT64_MIN}}});
             for (size_t i = 0; i < w.size(); ++i) {
                 const size_t_ id = gbwt::Node::id(w[i]);
                 if (!refco.has(id)) continue;
                 const int64_t s = refco.bpStart(id), e = s + static_cast<int64_t>(nlen(w[i]));
-                auto& x = bp[i / kB];
+                auto& x = bp[i / kB][gbwt::Node::is_reverse(w[i])];
                 x.first = std::min(x.first, s); x.second = std::max(x.second, e);
             }
         }
@@ -442,25 +443,29 @@ inline bool refBpRange(
 {
     const auto& w  = (*pv.full)[hap];
     const auto& bk = pv.blk->b[hap];
-    int64_t lo = INT64_MAX, hi = INT64_MIN;
+    int64_t lo[2] = {INT64_MAX, INT64_MAX}, hi[2] = {INT64_MIN, INT64_MIN};
     auto node = [&](uint64_t i) {
         const size_t_ id = gbwt::Node::id(w[i]);
         if (!refco.has(id)) return;
         const int64_t s = refco.bpStart(id);
-        lo = std::min(lo, s); hi = std::max(hi, s + static_cast<int64_t>(nlen(w[i])));
+        const bool r = gbwt::Node::is_reverse(w[i]);
+        lo[r] = std::min(lo[r], s); hi[r] = std::max(hi[r], s + static_cast<int64_t>(nlen(w[i])));
     };
     if (!w.empty() && a_start <= a_end && a_start < w.size()) {
         const uint64_t last = std::min<uint64_t>(a_end, w.size() - 1);
         uint64_t i = a_start;
         for (; i <= last && i % RefBlocks::kB != 0; ++i) node(i);
         for (; i + RefBlocks::kB - 1 <= last; i += RefBlocks::kB) {
-            const auto& x = bk[i / RefBlocks::kB];
-            lo = std::min(lo, x.first); hi = std::max(hi, x.second);
+            for (int r = 0; r < 2; ++r) {
+                const auto& x = bk[i / RefBlocks::kB][r];
+                lo[r] = std::min(lo[r], x.first); hi[r] = std::max(hi[r], x.second);
+            }
         }
         for (; i <= last; ++i) node(i);
     }
-    if (lo == INT64_MAX) return false;
-    start_bp = lo; end_bp = hi;
+    const int o = lo[0] == INT64_MAX || (lo[1] != INT64_MAX && hi[1] - lo[1] > hi[0] - lo[0]);
+    if (lo[o] == INT64_MAX) return false;
+    start_bp = lo[o]; end_bp = hi[o];
     return true;
 }
 
@@ -480,9 +485,12 @@ inline bool anchorPastEdge(const PathView& pv, size_t_ hap,
     if (i_end >= w.size()) return false;
     const uint32_t edge = after ? i_end : i_start;
     if (refco.has(gbwt::Node::id(w[edge]))) return false;
+    uint32_t j = edge;
+    while (j != (after ? i_start : i_end) && !refco.has(gbwt::Node::id(w[j]))) after ? --j : ++j;
     if (after) {
         for (size_t i = size_t(i_end) + 1; i < w.size(); ++i)
             if (refco.has(gbwt::Node::id(w[i]))) {
+                if (gbwt::Node::is_reverse(w[i]) != gbwt::Node::is_reverse(w[j])) return false;
                 s = refco.bpStart(gbwt::Node::id(w[i]));
                 e = s + static_cast<int64_t>(nlen(w[i]));
                 return true;
@@ -490,6 +498,7 @@ inline bool anchorPastEdge(const PathView& pv, size_t_ hap,
     } else {
         for (size_t i = i_start; i-- > 0; )
             if (refco.has(gbwt::Node::id(w[i]))) {
+                if (gbwt::Node::is_reverse(w[i]) != gbwt::Node::is_reverse(w[j])) return false;
                 s = refco.bpStart(gbwt::Node::id(w[i]));
                 e = s + static_cast<int64_t>(nlen(w[i]));
                 return true;
@@ -550,8 +559,7 @@ struct MarkerSites {
 
 // The segment builder's piece test, applied at emission so that only gMEMs
 // that can be part of a segment are kept: a forward gMEM needs an on-reference
-// span of at least min-extend (cM and markers), an inverted one is kept at any
-// length.
+// span of at least min-extend (cM and markers).
 struct CmFilter {
     const PathView*   pv;
     const RefCoords*  refco;
@@ -566,6 +574,13 @@ struct CmFilter {
     // orientation, so the stub can be part of one orientation-aware IBS run.
     const std::vector<std::pair<int64_t, int64_t>>* loci = nullptr;
     int64_t tol = 0;
+    const std::vector<std::vector<std::pair<int64_t, int64_t>>>* runs = nullptr;
+    bool nearEdge(const std::vector<std::pair<int64_t, int64_t>>& v, int64_t sb, int64_t eb) const {
+        for (const auto& r : v)
+            for (int64_t x : {r.first, r.second})
+                if (std::llabs(x - sb) <= tol || std::llabs(x - eb) <= tol) return true;
+        return false;
+    }
     bool atLocusEdge(int64_t sb, int64_t eb) const {
         if (!loci || loci->empty()) return false;
         // Loci are sorted and disjoint: an edge within tol of x belongs to the
@@ -585,9 +600,9 @@ struct CmFilter {
         if (!refBpRange(*pv, s, *refco, *nlen, sb, eb))
             return false;
         cM = gmap->cMAtBp(eb) - gmap->cMAtBp(sb);
-        // Inverted matches are kept at any length: in the piece loop they can
-        // fill a hole of the forward matching (see main.cpp).
-        if (s.inverted) return true;
+        if (s.inverted)
+            return isExtend(sb, eb, cM) || !runs || nearEdge((*runs)[s.hap_a], sb, eb)
+                || nearEdge((*runs)[s.hap_b], sb, eb);
         if (cM >= min_cM && (!sites || sites->count(sb, eb) >= sites->extend_markers)) return true;
         return atLocusEdge(sb, eb);   // flank stub (ge_extend false)
     }
