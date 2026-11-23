@@ -460,8 +460,10 @@ int main(int argc, char* argv[]) {
     // (overlapping runs are one locus), from the original (unmasked) walks.
     std::vector<int8_t> path_rev;
     std::vector<std::pair<int64_t, int64_t>> inv_loci;
+    std::vector<std::vector<std::pair<int64_t, int64_t>>> hap_runs;
     auto computeLoci = [&](const std::vector<Walk32>& Wv) {
         path_rev.assign(Wv.size(), -1);
+        hap_runs.assign(Wv.size(), {});
         struct Run { int64_t lo, hi; uint32_t p; };
         std::vector<Run> runs;
         Stretch st;
@@ -471,7 +473,10 @@ int main(int argc, char* argv[]) {
             path_rev[p] = refRevDom(W) ? 1 : 0;
             st.inv.clear();
             scanWalk(W, path_rev[p] == 1, true, false, st);
-            for (const SvEvent& e : st.inv) runs.push_back({e.lo, e.hi, static_cast<uint32_t>(p)});
+            for (const SvEvent& e : st.inv) {
+                runs.push_back({e.lo, e.hi, static_cast<uint32_t>(p)});
+                hap_runs[p].push_back({e.lo, e.hi});
+            }
         }
         std::sort(runs.begin(), runs.end(),
                   [](const Run& x, const Run& y) { return x.lo < y.lo; });
@@ -496,7 +501,7 @@ int main(int argc, char* argv[]) {
     // forward matches shorter than min-extend that end at an inversion locus.
     if (segments) {
         computeLoci(masked ? orig32 : full32);
-        if (!opt.no_inversion) { cm_filter.loci = &inv_loci; cm_filter.tol = opt.max_gap_bp; }
+        if (!opt.no_inversion) { cm_filter.loci = &inv_loci; cm_filter.runs = &hap_runs; cm_filter.tol = opt.max_gap_bp; }
         // A flank stub can be shorter than the forward floor, so with inversion
         // loci forward matches are found down to the inverted floor as well; the
         // emission filter keeps only those that end at a locus edge.
